@@ -1,0 +1,24 @@
+version: "3.9"
+
+services:
+  vite:
+    image: mockholm/use-apm-vite
+    build:
+      context: .
+      dockerfile: Dockerfile.vite
+    ports:
+      - "5173:5173"
+    environment:
+      APM_SERVER: ${APM_SERVER}
+      APM_TOKEN: ${APM_TOKEN}
+
+  nginx:
+    image: mock/use-apm-nginx
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    environment:
+      APM_SERVER: ${APM_SERVER}
+      APM_TOKEN: ${APM_TOKEN}
+    ports:
+      - "80:80"

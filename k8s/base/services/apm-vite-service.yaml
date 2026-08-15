@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: apm-vite
+  namespace: apm-system
+spec:
+  selector:
+    app: apm-vite
+  ports:
+    - port: 5173
+      targetPort: 5173
+      protocol: TCP

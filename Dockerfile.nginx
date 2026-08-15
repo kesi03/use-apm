@@ -1,0 +1,11 @@
+# --- NGINX APM PROXY IMAGE ---
+FROM nginx:latest
+
+# Copy your nginx.conf
+COPY nginx.conf /etc/nginx/nginx.conf
+
+# Allow environment variables inside nginx
+ENV APM_SERVER=""
+ENV APM_TOKEN=""
+
+EXPOSE 80

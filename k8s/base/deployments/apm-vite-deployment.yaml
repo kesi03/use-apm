@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apm-vite
+  namespace: apm-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apm-vite
+  template:
+    metadata:
+      labels:
+        app: apm-vite
+    spec:
+      containers:
+        - name: apm-vite
+          image: mockholm/use-apm-vite
+          ports:
+            - containerPort: 5173
+          
+          env:
+            - name: VITE_APM_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: apm-global-config
+                  key: APM_SERVER
+            - name: VITE_APM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: apm-secret
+                  key: apm-token

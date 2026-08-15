@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apm-nginx
+  namespace: apm-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apm-nginx
+  template:
+    metadata:
+      labels:
+        app: apm-nginx
+    spec:
+      containers:
+        - name: apm-nginx
+          image: mock/use-apm-nginx
+          ports:
+            - containerPort: 80
+          env:
+            - name: APM_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: apm-global-config
+                  key: APM_SERVER
+            - name: EXPRESS_SERVER
+              valueFrom:
+                configMapKeyRef:
+                  name: apm-global-config
+                  key: EXPRESS_SERVER
+            - name: APM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: apm-secret
+                  key: apm-token
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: apm-nginx-config

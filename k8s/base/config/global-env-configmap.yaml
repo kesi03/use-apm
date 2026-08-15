@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apm-global-config
+  namespace: apm-system
+data:
+  APM_SERVER: "https://prod-apm.elastic-cloud:443"
+  EXPRESS_SERVER: "http://express-apm.apm-system.svc.cluster.local:3000"

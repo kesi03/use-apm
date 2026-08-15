@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: apm-system
+
+resources:
+  - namespaces/apm-namespace.yaml
+
+  # Config
+  - config/global-env-configmap.yaml
+  - config/nginx-config.yaml
+
+  # Secrets
+  - secret/apm-secret.yaml
+
+  # Deployments
+  - deployments/apm-nginx-deployment.yaml
+  - deployments/apm-vite-deployment.yaml
+  - deployments/express-apm-deployment.yaml
+
+  # Services
+  - services/apm-nginx-service.yaml
+  - services/apm-vite-service.yaml
+  - services/express-apm-service.yaml

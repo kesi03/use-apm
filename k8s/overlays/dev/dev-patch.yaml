@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apm-nginx
+spec:
+  template:
+    spec:
+      containers:
+        - name: apm-nginx
+          env:
+            - name: APM_SERVER
+              value: "https://dev-apm.elastic-cloud:443"
+            - name: EXPRESS_SERVER
+              value: "http://express-apm.apm-system.svc.cluster.local:3000"
+            - name: APM_TOKEN
+              value: "dev-token"
