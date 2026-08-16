@@ -1,5 +1,5 @@
 // apm/SimpleApmButton.tsx
-import React from "react";
+import React, { useState } from "react";
 import { useGlobalApm } from "./ApmContext"; // 1. Importera din globala context-hook
 import { useApm } from "./useApm"; 
 
@@ -21,27 +21,43 @@ export function SimpleApmButton({
   onClick,
   extraEvents
 }: SimpleApmButtonProps) {
-  
-  // 2. Hämta den delade, globala APM-instansen istället för att skapa en ny
   const apm = useGlobalApm();
+  const [status, setStatus] = useState("Idle");
 
   const handleClick = async () => {
-    // PRE
-    apm.preEvent(txName, "ui");
+    try {
+      setStatus("PRE: running");
+      apm.preEvent(txName, "ui");
+      setStatus("PRE: complete");
 
-    // MAIN
-    await apm.mainEvent("main-action", async () => {
-      return await onClick(apm);
-    });
+      setStatus("MAIN: running");
+      await apm.mainEvent("main-action", async () => {
+        return await onClick(apm);
+      });
+      setStatus("MAIN: complete");
 
-    // EXTRA EVENTS
-    if (extraEvents) {
-      await extraEvents(apm);
+      if (extraEvents) {
+        setStatus("EXTRA: running");
+        await extraEvents(apm);
+        setStatus("EXTRA: complete");
+      }
+
+      setStatus("POST: running");
+      await apm.postEvent();
+      setStatus("POST: complete");
+    } catch (error) {
+      setStatus("Apm lifecycle failed");
+      console.error("SimpleApmButton failed:", error);
     }
-
-    // POST
-    await apm.postEvent();
   };
 
-  return <button onClick={handleClick}>{children}</button>;
+  return (
+    <div>
+      <button className="btn-black" onClick={handleClick}>{children}</button>
+    <div className="clear-both" aria-hidden="true" />
+      <div className="apm-status" aria-live="polite">
+        {status}
+      </div>
+    </div>
+  );
 }

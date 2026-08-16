@@ -1,5 +1,5 @@
 // apm/ApmButton.tsx
-import React from "react";
+import React, { useState } from "react";
 import { useGlobalApm } from "./ApmContext";
 import { useApm } from "./useApm";
 
@@ -23,33 +23,53 @@ export function ApmButton({
   extraEvents = [],
   postEvents = []
 }: ApmButtonProps) {
-  
-  // 2. Använd den globala instansen istället för att initiera en ny
   const apm = useGlobalApm();
+  const [status, setStatus] = useState("Idle");
 
-  const runEvents = async (events: ApmButtonEvent[]) => {
-    for (const evt of events) {
-      await evt(apm);
+  const runEvents = async (events: ApmButtonEvent[], label: string) => {
+    if (!events.length) {
+      return;
+    }
+
+    setStatus(`${label}: running...`);
+
+    try {
+      for (const evt of events) {
+        await evt(apm);
+      }
+      setStatus(`${label}: complete`);
+    } catch (error) {
+      setStatus(`${label}: failed`);
+      throw error;
     }
   };
 
   const handleClick = async () => {
-    // PRE
-    apm.preEvent(txName, "ui");
-    await runEvents(preEvents);
+    try {
+      apm.preEvent(txName, "ui");
+      await runEvents(preEvents, "Pre events");
 
-    // MAIN
-    await apm.mainEvent("main-events", async () => {
-      await runEvents(mainEvents);
-    });
+      await apm.mainEvent("main-events", async () => {
+        await runEvents(mainEvents, "Main events");
+      });
 
-    // EXTRA
-    await runEvents(extraEvents);
-
-    // POST
-    await runEvents(postEvents);
-    await apm.postEvent();
+      await runEvents(extraEvents, "Extra events");
+      await runEvents(postEvents, "Post events");
+      await apm.postEvent();
+      setStatus("Transaction sent");
+    } catch (error) {
+      setStatus("Apm run failed");
+      console.error("ApmButton failed:", error);
+    }
   };
 
-  return <button onClick={handleClick}>{children}</button>;
+  return (
+    <div>
+      <button className="btn-black" onClick={handleClick}>{children}</button>
+      <div className="clear-both" aria-hidden="true" />
+      <div className="apm-status" aria-live="polite">
+        {status}
+      </div>
+    </div>
+  );
 }

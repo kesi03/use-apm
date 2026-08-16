@@ -14,7 +14,12 @@ export function useApm(config: ApmConfig) {
     const start = performance.now();
 
     const metadata = {
-      service: { name: config.serviceName },
+      service: { 
+        name: config.serviceName ,
+        node: {
+          name: window.location.hostname || 'browser'
+        }
+      },
       user: getSmartUser(),
       browser: getBrowserContext(),
       navigation: getNavigationTimings(),

@@ -9,6 +9,14 @@ import { apmAgent } from "./apm"; // Starts Elastic APM before any other modules
 import express, { Request, Response } from "express";
 import axios from "axios";
 
+function logApmHeaders(req: Request) {
+    // 1. Verify the header made it past your proxy
+    console.log("Incoming traceparent header:", req.headers["traceparent"]);
+    // 2. Verify Elastic APM successfully adopted it as the trace root
+    const currentIds = apmAgent.currentTraceIds;
+    console.log("Elastic APM Active Trace ID:", currentIds["trace.id"]);
+}
+
 // ==========================================
 // 3. SERVER BOOTSTRAP FUNCTION
 // ==========================================
@@ -32,18 +40,21 @@ async function startServer() {
 
     // Greet route (Simulates 200ms delay)
     app.get("/greet/:name", async (req: Request, res: Response) => {
+        logApmHeaders(req);
         await sleep(200);
         res.json(`Hello, ${req.params.name}!`);
     });
 
     // Slow route (Simulates 1000ms delay)
     app.get("/slow", async (_req: Request, res: Response) => {
+        logApmHeaders(_req);
         await sleep(1000);
         res.json("Slow response");
     });
 
     // Custom transaction (Manual APM tracking)
     app.get("/custom", (_req: Request, res: Response) => {
+        logApmHeaders(_req);
         const tx = apmAgent.startTransaction("custom-work", "custom");
         const span = tx?.startSpan("do-some-work", "custom");
 
@@ -58,6 +69,8 @@ async function startServer() {
     app.post("/chain", async (req: Request, res: Response) => {
         const chain = req.body;
         const traceparent = req.headers["traceparent"] as string | undefined;
+
+        logApmHeaders(req);
 
         // Start a manual span for this step in the chain
         const span = apmAgent.startSpan("express-chain-step", "custom");
