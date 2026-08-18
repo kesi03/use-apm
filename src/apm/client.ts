@@ -1,5 +1,6 @@
 import axios from "axios";
-import {ApmConfig, ApmTransaction } from "./types";
+import { ApmConfig, ApmTransaction } from "./types";
+import { MetadataCollector } from "./meta";
 
 declare const __DEV_MACHINE_NAME__: string;
 
@@ -13,6 +14,13 @@ export type ApmServiceCallOptions = {
 
 export class ApmClient {
   constructor(private readonly config: ApmConfig, private readonly txRef?: any) { }
+  
+  setTransaction(tx: ApmTransaction) {
+    if (!this.txRef) {
+      throw new Error("ApmClient was constructed without a txRef");
+    }
+    this.txRef.current = tx;
+  }
 
   private getApiKey() {
     return this.config.apiKey || localStorage.getItem("apm_api_key") || "";
@@ -28,32 +36,39 @@ export class ApmClient {
   }
 
   // Inject standard, custom, and state APM headers into outgoing HTTP calls
-  injectApmHeaders(spanId: string) {
-    if (!this.txRef?.current) return {};
-
-    const tx = this.txRef.current;
-    
-    // Fall back safely if the underlying object hasn't mapped traceId yet
-    const traceId = tx.traceId || tx.metadata?.traceId || this.generateFallbackTraceId();
-    
-    // W3C format: version (00) - traceId (32 hex) - parentId/spanId (16 hex) - traceFlags (01 sampled)
-    const w3cTraceParent = `00-${traceId}-${spanId}-01`;
-
-    const headers: Record<string, string> = {
-      "X-APM-Transaction-ID": tx.id,
-      "X-APM-Span-ID": spanId,
-      "traceparent": w3cTraceParent,
-      "elastic-apm-traceparent": w3cTraceParent
-    };
-
-    // If your transaction object tracks an existing tracestate string, propagate it downstream
-    const traceStateStr = tx.traceState || tx.metadata?.traceState;
-    if (traceStateStr) {
-      headers["tracestate"] = traceStateStr;
-    }
-
-    return headers;
+injectApmHeaders(spanId: string, trans?: ApmTransaction) {
+  // Resolve the active transaction
+  const tx = trans || this.txRef?.current;
+  if (!tx) {
+    console.warn("injectApmHeaders called without an active transaction");
+    return {};
   }
+
+  // Resolve traceId with safe fallback
+  const traceId =
+    tx.traceId ||
+    tx.metadata?.traceId ||
+    this.generateFallbackTraceId();
+
+  // W3C traceparent: version (00) - traceId (32 hex) - parentId/spanId (16 hex) - traceFlags (01 sampled)
+  const w3cTraceParent = `00-${traceId}-${spanId}-01`;
+
+  const headers: Record<string, string> = {
+    "X-APM-Transaction-ID": tx.id,
+    "X-APM-Span-ID": spanId,
+    "traceparent": w3cTraceParent,
+    "elastic-apm-traceparent": w3cTraceParent
+  };
+
+  // Optional tracestate propagation
+  const traceStateStr = tx.traceState || tx.metadata?.traceState;
+  if (traceStateStr) {
+    headers["tracestate"] = traceStateStr;
+  }
+
+  return headers;
+}
+
 
   enableAxiosInstrumentation(startSpan: Function, endSpan: Function) {
     axios.interceptors.request.use((config) => {
@@ -114,6 +129,8 @@ export class ApmClient {
     const requestHeaders = options.headers ?? {};
     const mergedHeaders = { ...requestHeaders, ...apmHeaders };
 
+    console.log(`wrapServiceCall: ${name} - ${url}`);
+
     try {
       const res = await axios({
         url,
@@ -123,7 +140,7 @@ export class ApmClient {
         params: options.params,
         timeout: options.timeout,
         // Configured flag to safely bypass interceptor instrumentation:
-        ...({ __apmBypassInstrumentation: true } as any) 
+        ...({ __apmBypassInstrumentation: true } as any)
       });
 
       endSpan(spanId);
@@ -137,24 +154,42 @@ export class ApmClient {
 
 
   async sendTransaction(tx: ApmTransaction) {
-    const ndjson = this.buildNdjson(tx);
-    try {
-      const res = await axios.post(`${this.config.apmUrl}/intake/v2/events`, ndjson, {
+  const ndjson = this.buildNdjson(tx);
+
+  // Use the first span (root span) as parent for header propagation
+  const rootSpan = tx.spans?.[0];
+  console.log(rootSpan);
+  const spanId = rootSpan?.id || tx.id; // fallback to transaction ID
+  
+  const apmHeaders = this.injectApmHeaders(spanId,tx);
+
+  console.log(`apmHeaders: \n`,apmHeaders)
+
+  try {
+    const res = await axios.post(
+      `${this.config.apmUrl}/intake/v2/events`,
+      ndjson,
+      {
         headers: {
           "Content-Type": "application/x-ndjson",
           ...(this.getApiKey()
             ? { Authorization: `ApiKey ${this.getApiKey()}` }
             : {}),
-        },
-      });
-      // eslint-disable-next-line no-console
-      console.info("APM sendTransaction response:", res.status, res.data);
-    } catch (e) {
-      // Swallow network errors when reporting telemetry so app flow is not interrupted
-      // eslint-disable-next-line no-console
-      console.warn("APM sendTransaction failed:", e);
-    }
+          ...apmHeaders, // ⭐ NEW: forward transaction/span/trace headers
+        }
+      }
+    );
+
+    // ndjson.split("\n").forEach((line, index) => {
+    //   console.log(`APM sendTransaction line ${index}:`, line);
+    // });
+
+    console.info("APM sendTransaction response:", res.status, res.data);
+  } catch (e) {
+    console.warn("APM sendTransaction failed:", e);
   }
+}
+
 
   async captureError(
     error: any,
@@ -229,41 +264,40 @@ export class ApmClient {
       return this.generateFallbackTraceId();
     })();
 
+    const pMeta = new MetadataCollector(this.config)
+    .addSystem(metadata?.browser || {})
+    .addFlattenLabels(metadata?.browser || {})
+    .addLabels(metadata?.navigation || {})
+    .get();
+
     const metadataDoc: any = {
-      metadata: {
-        service: {
-          name: this.config.serviceName,
-          node: {
-            configured_name: __DEV_MACHINE_NAME__ ||metadata?.node?.configured_name || window.location.hostname || "browser",
-            name: __DEV_MACHINE_NAME__ || metadata?.node?.name || window.location.hostname || "browser"
-          },
-          agent: { name: "react", version: "1.0.0" },
-          environment: metadata?.environment || "development"
-        },
-        labels: metadata?.custom || undefined,
-        user: metadata?.user || undefined,
-        system: metadata?.system || undefined
-      }
+      metadata: pMeta
     };
 
     const durationMs = tx.end! - tx.start;
-    const transactionDoc: any = {
+
+    const transactionDoc:any = {
       transaction: {
         id: tx.id,
         trace_id: traceId,
+        parent_id: null,
         name: tx.name || undefined,
         type: tx.type || "custom",
-        duration: Number.parseFloat((durationMs).toFixed(3)),
-        span_count: { started: tx.spans.length || 0 },
+        duration: Number.parseFloat(durationMs.toFixed(3)),
         timestamp: txTimestampUs,
-        context: {
-          user: metadata.user || undefined,
-          page: { url: metadata.browser?.url || undefined },
-          custom: metadata.custom || undefined,
-          service: { environment: metadata.environment || "development" }
-        }
-      }
-    };
+
+        result: tx.result || "success",
+        outcome: tx.outcome || "success",
+        sample_rate: 1.0,
+
+        span_count: {
+          started: tx.spans.length || 0,
+          dropped: 0
+        },
+
+        context: pMeta,
+    }
+  };
 
     const spanDocs = tx.spans.map((s) => ({
       span: {

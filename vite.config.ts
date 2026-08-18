@@ -14,7 +14,7 @@ export default defineConfig(({ mode }) => {
   return {
     // Inject the resolved hostname into the global client scope
     define: {
-      __DEV_MACHINE_NAME__: JSON.stringify(hostname)
+      __DEV_MACHINE_NAME__: JSON.stringify(hostname.toLowerCase())
     },
 
     plugins: [
@@ -52,10 +52,23 @@ export default defineConfig(({ mode }) => {
           secure: false,
 
           // /apm/intake/v2/events → /intake/v2/events
-          rewrite: (path) => path.replace(/^\/apm/, ""),
+          rewrite: (path) => {
+            console.log(env.VITE_APM_SERVER)
+            console.log(`old path: \n ${path}`)
+            path = path.replace(/^\/apm/, "")
+            console.log(`new path: \n ${path}`)
+            return path
+          },
 
           configure: (proxy) => {
-            proxy.on("proxyReq", (proxyReq) => {
+            proxy.on("proxyReq", (proxyReq,req) => {
+              // Forward ALL client headers
+              Object.entries(req.headers).forEach(([key, value]) => {
+                if (value !== undefined) {
+                  console.log(`Setting header: ${key} = ${value}`);
+                  proxyReq.setHeader(key, value);
+                }
+              });
               // Inject APM token securely from environment variables
               proxyReq.setHeader(
                 "Authorization",

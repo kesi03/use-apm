@@ -45,12 +45,14 @@ export function useApm(config: ApmConfig) {
       ...txRef.current.metadata.custom,
       ...obj
     };
+    client.setTransaction(txRef.current);
     sessionStorage.setItem("apm_tx", JSON.stringify(txRef.current));
   };
 
   const addMetadataField = (key: string, value: any) => {
     if (!txRef.current) return;
     txRef.current.metadata.custom[key] = value;
+    client.setTransaction(txRef.current);
     sessionStorage.setItem("apm_tx", JSON.stringify(txRef.current));
   };
 
@@ -69,6 +71,7 @@ export function useApm(config: ApmConfig) {
     };
 
     txRef.current.spans.push(span);
+    client.setTransaction(txRef.current);
     sessionStorage.setItem("apm_tx", JSON.stringify(txRef.current));
     return span.id;
   };
@@ -78,6 +81,7 @@ export function useApm(config: ApmConfig) {
     const span = txRef.current.spans.find((s) => s.id === spanId);
     if (!span) return;
     span.end = performance.now();
+    client.setTransaction(txRef.current);
     sessionStorage.setItem("apm_tx", JSON.stringify(txRef.current));
   };
 
@@ -87,6 +91,7 @@ export function useApm(config: ApmConfig) {
     sessionStorage.setItem("apm_tx", JSON.stringify(txRef.current));
 
     const tx = txRef.current;
+    client.setTransaction(txRef.current);
     txRef.current = null;
     sessionStorage.removeItem("apm_tx");
 
